@@ -1,6 +1,9 @@
 import sys
 import subprocess
 import base64
+import ipaddress
+import queue
+import concurrent.futures
 from flask import Flask, request, Response, stream_with_context
 
 app = Flask(__name__)
@@ -8,32 +11,62 @@ app = Flask(__name__)
 @app.route('/scan', methods=['POST'])
 def scan():
     data = request.get_json(silent=True) or {}
-    ip = data.get('ip')
-    if not ip:
+    ip_input = (data.get('ip') or '').strip()
+    if not ip_input:
         return {"error": "ip required"}, 400
 
+    try:
+        if '/' in ip_input:
+            network = ipaddress.ip_network(ip_input, strict=False)
+            targets = [str(h) for h in network.hosts()] or [str(network.network_address)]
+        else:
+            ipaddress.ip_address(ip_input)
+            targets = [ip_input]
+    except ValueError:
+        return {"error": "invalid ip"}, 400
+
     def generate():
-        process = subprocess.Popen(
-            [sys.executable, '-u', 'CamXploit.py'],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
-        # send the ip address followed by newline
-        try:
-            process.stdin.write(ip + '\n')
-            process.stdin.flush()
-        except Exception as e:
-            yield f'data: Failed to send input: {e}\n\n'
-            process.kill()
-            return
-        for line in iter(process.stdout.readline, ''):
-            yield f'data: {line.rstrip()}\n\n'
-        process.stdout.close()
-        process.wait()
-        # notify client that the scan is finished
+        q = queue.Queue()
+
+        def run_scan(target_ip):
+            process = subprocess.Popen(
+                [sys.executable, '-u', 'CamXploit.py'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            try:
+                process.stdin.write(target_ip + '\n')
+                process.stdin.flush()
+            except Exception as e:
+                q.put(f"{target_ip}: Failed to send input: {e}")
+                process.kill()
+                q.put(None)
+                return
+
+            for line in iter(process.stdout.readline, ''):
+                q.put(f"{target_ip}: {line.rstrip()}")
+            process.stdout.close()
+            process.wait()
+            q.put(None)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 4)) as executor:
+            for ip_addr in targets:
+                executor.submit(run_scan, ip_addr)
+
+            finished = 0
+            while finished < len(targets):
+                try:
+                    item = q.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                if item is None:
+                    finished += 1
+                    continue
+                yield f'data: {item}\n\n'
+
         yield 'event: end\ndata: done\n\n'
 
     headers = {
