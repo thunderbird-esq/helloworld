@@ -25,6 +25,7 @@
     const button = document.getElementById('scan');
     const statusEl = document.getElementById('status');
     const results = document.getElementById('results');
+    let es;
 
     function addFinding(event) {
         const div = document.createElement('div');
@@ -43,53 +44,33 @@
         results.scrollTop = results.scrollHeight;
     }
 
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
         const ip = document.getElementById('ip').value.trim();
         if (!ip) return;
+        if (es) es.close();
         button.disabled = true;
         statusEl.textContent = '';
         results.innerHTML = '';
 
-        try {
-            const response = await fetch('/scan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ip })
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                statusEl.textContent = data.error || 'Server error';
+        es = new EventSource('/scan?ip=' + encodeURIComponent(ip));
+        es.onmessage = (ev) => {
+            if (!ev.data) return;
+            let evt;
+            try { evt = JSON.parse(ev.data); } catch { return; }
+            if (evt.type === 'status') {
+                statusEl.textContent = evt.message;
+            } else if (evt.type === 'finding') {
+                addFinding(evt);
+            } else if (evt.type === 'end') {
+                es.close();
                 button.disabled = false;
-                return;
             }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                let lines = buffer.split('\n');
-                buffer = lines.pop();
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-                    let evt;
-                    try { evt = JSON.parse(line); } catch (e) { continue; }
-                    if (evt.type === 'status') {
-                        statusEl.textContent = evt.message;
-                    } else if (evt.type === 'finding') {
-                        addFinding(evt);
-                    } else if (evt.type === 'end') {
-                        button.disabled = false;
-                    }
-                }
-            }
+        };
+        es.onerror = () => {
+            if (es) es.close();
             button.disabled = false;
-        } catch (e) {
-            statusEl.textContent = 'Failed to connect';
-            button.disabled = false;
-        }
+            statusEl.textContent = 'Connection error';
+        };
     });
     </script>
 </body>

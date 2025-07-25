@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+*.log
+.env
+venv/
+ENV/
+*.env
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+*.m3u8
+*.ts

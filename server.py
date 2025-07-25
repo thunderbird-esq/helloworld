@@ -1,3 +1,4 @@
+import os
 import sys
 import subprocess
 import base64
@@ -7,13 +8,25 @@ import concurrent.futures
 import json
 import re
 from flask import Flask, request, Response, stream_with_context
+from dotenv import load_dotenv
+
+load_dotenv()
+
+CAMXPLOIT_PATH = os.getenv("CAMXPLOIT_PATH", "CamXploit.py")
+FFMPEG_PATH = os.getenv("FFMPEG_PATH", "ffmpeg")
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
+HOST = os.getenv("FLASK_HOST", "0.0.0.0")
+PORT = int(os.getenv("FLASK_PORT", "5000"))
 
 app = Flask(__name__)
 
-@app.route('/scan', methods=['POST'])
+@app.route('/scan', methods=['GET', 'POST'])
 def scan():
-    data = request.get_json(silent=True) or {}
-    ip_input = (data.get('ip') or '').strip()
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        ip_input = (data.get('ip') or '').strip()
+    else:
+        ip_input = (request.args.get('ip') or '').strip()
     if not ip_input:
         return {"error": "ip required"}, 400
 
@@ -54,7 +67,7 @@ def scan():
 
         def run_scan(target_ip):
             process = subprocess.Popen(
-                [sys.executable, '-u', 'CamXploit.py'],
+                [sys.executable, '-u', CAMXPLOIT_PATH],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -80,7 +93,7 @@ def scan():
             q.put({"ip": target_ip, "type": "complete"})
             q.put(None)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 4)) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), MAX_WORKERS)) as executor:
             for ip_addr in targets:
                 executor.submit(run_scan, ip_addr)
 
@@ -93,15 +106,15 @@ def scan():
                 if item is None:
                     finished += 1
                     continue
-                yield json.dumps(item, ensure_ascii=False) + '\n'
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
-        yield json.dumps({"type": "end"}) + '\n'
+        yield "data: {\"type\": \"end\"}\n\n"
 
     headers = {
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     }
-    return Response(stream_with_context(generate()), mimetype='application/x-ndjson', headers=headers)
+    return Response(stream_with_context(generate()), mimetype='text/event-stream', headers=headers)
 
 
 @app.route('/stream/<stream_url_b64>')
@@ -116,7 +129,7 @@ def stream(stream_url_b64):
 
     def generate_hls():
         cmd = [
-            'ffmpeg',
+            FFMPEG_PATH,
             '-i', stream_url,
             '-preset', 'ultrafast',
             '-tune', 'zerolatency',
@@ -140,4 +153,4 @@ def stream(stream_url_b64):
     return Response(stream_with_context(generate_hls()), mimetype='application/vnd.apple.mpegurl', headers=headers)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    app.run(host=HOST, port=PORT, threaded=True)

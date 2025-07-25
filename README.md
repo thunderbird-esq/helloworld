@@ -101,7 +101,27 @@ Enter the **public IP address** of the target device when prompted.
    - Detects **live streams** (RTSP, RTMP, HTTP, MMS)  
    - Provides **location information** with maps  
    - Shows **server details** and authentication types  
-4️⃣ Provides **manual search URLs** for deeper investigation  
+4️⃣ Provides **manual search URLs** for deeper investigation
+
+---
+
+## 📂 Environment Configuration
+
+Create a `.env` file in the project root to tune the web interface. The server reads
+this file automatically on startup. Example:
+
+```ini
+CAMXPLOIT_PATH=CamXploit.py
+FFMPEG_PATH=ffmpeg
+MAX_WORKERS=4
+FLASK_HOST=0.0.0.0
+FLASK_PORT=5000
+```
+
+`CAMXPLOIT_PATH` and `FFMPEG_PATH` let you point to custom binaries. `MAX_WORKERS`
+controls how many IPs are scanned concurrently, and the Flask host/port options allow
+the service to bind to a different interface.
+The `.env` file is ignored by Git so your local configuration stays private.
 
 ---
 
