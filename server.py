@@ -33,7 +33,11 @@ def scan():
         process.stdout.close()
         process.wait()
 
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return Response(stream_with_context(generate()), mimetype='text/event-stream', headers=headers)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
