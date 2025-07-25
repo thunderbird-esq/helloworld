@@ -48,6 +48,11 @@ body {
     white-space: pre-wrap;
 }
 
+.status {
+    font-family: monospace;
+    margin-bottom: 5px;
+}
+
 .output a {
     color: blue;
     text-decoration: underline;

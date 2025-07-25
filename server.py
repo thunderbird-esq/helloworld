@@ -4,6 +4,8 @@ import base64
 import ipaddress
 import queue
 import concurrent.futures
+import json
+import re
 from flask import Flask, request, Response, stream_with_context
 
 app = Flask(__name__)
@@ -25,6 +27,28 @@ def scan():
     except ValueError:
         return {"error": "invalid ip"}, 400
 
+    def parse_line(line):
+        line = line.strip()
+        try:
+            url_match = re.search(r'(https?|rtsp|rtmp)://\S+', line)
+            if url_match:
+                event = {"type": "finding", "url": url_match.group(0), "message": line}
+                port_match = re.search(r'port\s*(\d+)', line, re.I)
+                if port_match:
+                    event["port"] = int(port_match.group(1))
+            else:
+                port_match = re.search(r'port\s*(\d+)', line, re.I)
+                if port_match:
+                    event = {"type": "finding", "port": int(port_match.group(1)), "message": line}
+                else:
+                    event = {"type": "status", "message": line}
+            if "scan completed" in line.lower():
+                event.setdefault("type", "status")
+                event["complete"] = True
+        except Exception as e:
+            event = {"type": "error", "message": f"parse error: {e}", "raw": line}
+        return event
+
     def generate():
         q = queue.Queue()
 
@@ -41,15 +65,19 @@ def scan():
                 process.stdin.write(target_ip + '\n')
                 process.stdin.flush()
             except Exception as e:
-                q.put(f"{target_ip}: Failed to send input: {e}")
+                q.put({"ip": target_ip, "type": "error", "message": f"send failed: {e}"})
                 process.kill()
                 q.put(None)
                 return
 
             for line in iter(process.stdout.readline, ''):
-                q.put(f"{target_ip}: {line.rstrip()}")
+                event = parse_line(line)
+                event["ip"] = target_ip
+                q.put(event)
+
             process.stdout.close()
             process.wait()
+            q.put({"ip": target_ip, "type": "complete"})
             q.put(None)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 4)) as executor:
@@ -65,15 +93,15 @@ def scan():
                 if item is None:
                     finished += 1
                     continue
-                yield f'data: {item}\n\n'
+                yield json.dumps(item, ensure_ascii=False) + '\n'
 
-        yield 'event: end\ndata: done\n\n'
+        yield json.dumps({"type": "end"}) + '\n'
 
     headers = {
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     }
-    return Response(stream_with_context(generate()), mimetype='text/event-stream', headers=headers)
+    return Response(stream_with_context(generate()), mimetype='application/x-ndjson', headers=headers)
 
 
 @app.route('/stream/<stream_url_b64>')

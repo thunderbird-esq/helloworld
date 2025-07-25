@@ -17,37 +17,38 @@
                 <input type="text" id="ip" placeholder="e.g. 192.168.1.1">
                 <button id="scan">Scan</button>
             </div>
-            <div id="output" class="output" tabindex="0"></div>
+            <div id="status" class="status"></div>
+            <div id="results" class="output" tabindex="0"></div>
         </div>
     </div>
     <script>
     const button = document.getElementById('scan');
-    const output = document.getElementById('output');
+    const statusEl = document.getElementById('status');
+    const results = document.getElementById('results');
 
-    function appendLine(text) {
+    function addFinding(event) {
         const div = document.createElement('div');
-        const urlMatch = text.match(/(https?:\/\/[\w./?=&%#-]+|rtsp:\/\/[\w./?=&%#-]+|rtmp:\/\/[\w./?=&%#-]+)/i);
-        if (urlMatch) {
-            const url = urlMatch[1];
-            const b64 = btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        if (event.url) {
+            const b64 = btoa(event.url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
             const anchor = document.createElement('a');
             anchor.href = '/stream/' + b64;
-            anchor.textContent = url;
+            anchor.textContent = event.url;
             anchor.target = '_blank';
-            div.textContent = text.replace(url, '');
+            div.textContent = (event.message || '').replace(event.url, '');
             div.appendChild(anchor);
         } else {
-            div.textContent = text;
+            div.textContent = event.message || '';
         }
-        output.appendChild(div);
-        output.scrollTop = output.scrollHeight;
+        results.appendChild(div);
+        results.scrollTop = results.scrollHeight;
     }
 
     button.addEventListener('click', async () => {
         const ip = document.getElementById('ip').value.trim();
         if (!ip) return;
         button.disabled = true;
-        output.innerHTML = '';
+        statusEl.textContent = '';
+        results.innerHTML = '';
 
         try {
             const response = await fetch('/scan', {
@@ -57,7 +58,7 @@
             });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                appendLine(data.error || 'Server error');
+                statusEl.textContent = data.error || 'Server error';
                 button.disabled = false;
                 return;
             }
@@ -69,20 +70,24 @@
                 const { value, done } = await reader.read();
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
-                let parts = buffer.split('\n\n');
-                buffer = parts.pop();
-                for (const part of parts) {
-                    const line = part.trim();
-                    if (line.startsWith('data:')) {
-                        appendLine(line.slice(5).trim());
-                    } else if (line.startsWith('event: end')) {
+                let lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let evt;
+                    try { evt = JSON.parse(line); } catch (e) { continue; }
+                    if (evt.type === 'status') {
+                        statusEl.textContent = evt.message;
+                    } else if (evt.type === 'finding') {
+                        addFinding(evt);
+                    } else if (evt.type === 'end') {
                         button.disabled = false;
-                        return; // stop reading
                     }
                 }
             }
+            button.disabled = false;
         } catch (e) {
-            appendLine('Failed to connect');
+            statusEl.textContent = 'Failed to connect';
             button.disabled = false;
         }
     });
