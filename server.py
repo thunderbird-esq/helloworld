@@ -9,7 +9,7 @@ def scan():
     data = request.get_json(silent=True) or {}
     ip = data.get('ip')
     if not ip:
-        return {'error': 'ip required'}, 400
+        return {"error": "ip required"}, 400
 
     def generate():
         process = subprocess.Popen(
@@ -32,6 +32,8 @@ def scan():
             yield f'data: {line.rstrip()}\n\n'
         process.stdout.close()
         process.wait()
+        # notify client that the scan is finished
+        yield 'event: end\ndata: done\n\n'
 
     headers = {
         "Cache-Control": "no-cache",

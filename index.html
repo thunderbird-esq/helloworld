@@ -23,7 +23,6 @@
     <script>
     const button = document.getElementById('scan');
     const output = document.getElementById('output');
-    let es;
 
     function appendLine(text) {
         const div = document.createElement('div');
@@ -32,41 +31,48 @@
         output.scrollTop = output.scrollHeight;
     }
 
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
         const ip = document.getElementById('ip').value.trim();
         if (!ip) return;
         button.disabled = true;
         output.innerHTML = '';
-        fetch('/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ip })
-        }).then(response => {
+
+        try {
+            const response = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip })
+            });
             if (!response.ok) {
-                response.json().then(data => {
-                    appendLine(data.error || 'Server error');
-                    button.disabled = false;
-                }).catch(() => {
-                    appendLine('Server error');
-                    button.disabled = false;
-                });
+                const data = await response.json().catch(() => ({}));
+                appendLine(data.error || 'Server error');
+                button.disabled = false;
                 return;
             }
-            es = new EventSource('/scan');
-            es.onmessage = ev => appendLine(ev.data);
-            es.onerror = () => {
-                es.close();
-                button.disabled = false;
-            };
-            es.onopen = () => console.log('SSE open');
-            es.addEventListener('end', () => {
-                es.close();
-                button.disabled = false;
-            });
-        }).catch(() => {
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let parts = buffer.split('\n\n');
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const line = part.trim();
+                    if (line.startsWith('data:')) {
+                        appendLine(line.slice(5).trim());
+                    } else if (line.startsWith('event: end')) {
+                        button.disabled = false;
+                        return; // stop reading
+                    }
+                }
+            }
+        } catch (e) {
             appendLine('Failed to connect');
             button.disabled = false;
-        });
+        }
     });
     </script>
 </body>
