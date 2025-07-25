@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import base64
 from flask import Flask, request, Response, stream_with_context
 
 app = Flask(__name__)
@@ -40,6 +41,42 @@ def scan():
         "X-Accel-Buffering": "no",
     }
     return Response(stream_with_context(generate()), mimetype='text/event-stream', headers=headers)
+
+
+@app.route('/stream/<stream_url_b64>')
+def stream(stream_url_b64):
+    """Transcode a stream URL to HLS using FFmpeg and stream the playlist."""
+    # Decode the base64-encoded URL
+    try:
+        padding = '=' * (-len(stream_url_b64) % 4)
+        stream_url = base64.urlsafe_b64decode(stream_url_b64 + padding).decode('utf-8')
+    except Exception:
+        return {"error": "invalid stream url"}, 400
+
+    def generate_hls():
+        cmd = [
+            'ffmpeg',
+            '-i', stream_url,
+            '-preset', 'ultrafast',
+            '-tune', 'zerolatency',
+            '-f', 'hls',
+            'pipe:1'
+        ]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+        try:
+            for chunk in iter(lambda: process.stdout.read(8192), b''):
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            process.stdout.close()
+            process.kill()
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    return Response(stream_with_context(generate_hls()), mimetype='application/vnd.apple.mpegurl', headers=headers)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
