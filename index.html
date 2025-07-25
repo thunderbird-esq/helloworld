@@ -26,7 +26,19 @@
 
     function appendLine(text) {
         const div = document.createElement('div');
-        div.textContent = text;
+        const urlMatch = text.match(/(https?:\/\/[\w./?=&%#-]+|rtsp:\/\/[\w./?=&%#-]+|rtmp:\/\/[\w./?=&%#-]+)/i);
+        if (urlMatch) {
+            const url = urlMatch[1];
+            const b64 = btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            const anchor = document.createElement('a');
+            anchor.href = '/stream/' + b64;
+            anchor.textContent = url;
+            anchor.target = '_blank';
+            div.textContent = text.replace(url, '');
+            div.appendChild(anchor);
+        } else {
+            div.textContent = text;
+        }
         output.appendChild(div);
         output.scrollTop = output.scrollHeight;
     }

@@ -48,6 +48,11 @@ body {
     white-space: pre-wrap;
 }
 
+.output a {
+    color: blue;
+    text-decoration: underline;
+}
+
 button:disabled {
     opacity: 0.6;
 }
