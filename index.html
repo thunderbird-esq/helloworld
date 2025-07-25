@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CamXploit Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <span class="title">CamXploit Scanner</span>
+        </div>
+        <div class="window-body">
+            <div class="form-group">
+                <label for="ip">IP Address:</label>
+                <input type="text" id="ip" placeholder="e.g. 192.168.1.1">
+                <button id="scan">Scan</button>
+            </div>
+            <div id="output" class="output" tabindex="0"></div>
+        </div>
+    </div>
+    <script>
+    const button = document.getElementById('scan');
+    const output = document.getElementById('output');
+    let es;
+
+    function appendLine(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        output.appendChild(div);
+        output.scrollTop = output.scrollHeight;
+    }
+
+    button.addEventListener('click', () => {
+        const ip = document.getElementById('ip').value.trim();
+        if (!ip) return;
+        button.disabled = true;
+        output.innerHTML = '';
+        fetch('/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip })
+        }).then(response => {
+            if (!response.ok) {
+                response.json().then(data => {
+                    appendLine(data.error || 'Server error');
+                    button.disabled = false;
+                }).catch(() => {
+                    appendLine('Server error');
+                    button.disabled = false;
+                });
+                return;
+            }
+            es = new EventSource('/scan');
+            es.onmessage = ev => appendLine(ev.data);
+            es.onerror = () => {
+                es.close();
+                button.disabled = false;
+            };
+            es.onopen = () => console.log('SSE open');
+            es.addEventListener('end', () => {
+                es.close();
+                button.disabled = false;
+            });
+        }).catch(() => {
+            appendLine('Failed to connect');
+            button.disabled = false;
+        });
+    });
+    </script>
+</body>
+</html>
