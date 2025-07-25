@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CamXploit Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <span class="title">CamXploit Scanner</span>
+        </div>
+        <div class="window-body">
+            <div class="form-group">
+                <label for="ip">IP Address:</label>
+                <input type="text" id="ip" placeholder="e.g. 192.168.1.1">
+                <button id="scan">Scan</button>
+            </div>
+            <div id="status" class="status"></div>
+            <div id="results" class="output" tabindex="0"></div>
+        </div>
+    </div>
+    <script>
+    const button = document.getElementById('scan');
+    const statusEl = document.getElementById('status');
+    const results = document.getElementById('results');
+
+    function addFinding(event) {
+        const div = document.createElement('div');
+        if (event.url) {
+            const b64 = btoa(event.url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            const anchor = document.createElement('a');
+            anchor.href = '/stream/' + b64;
+            anchor.textContent = event.url;
+            anchor.target = '_blank';
+            div.textContent = (event.message || '').replace(event.url, '');
+            div.appendChild(anchor);
+        } else {
+            div.textContent = event.message || '';
+        }
+        results.appendChild(div);
+        results.scrollTop = results.scrollHeight;
+    }
+
+    button.addEventListener('click', async () => {
+        const ip = document.getElementById('ip').value.trim();
+        if (!ip) return;
+        button.disabled = true;
+        statusEl.textContent = '';
+        results.innerHTML = '';
+
+        try {
+            const response = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip })
+            });
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                statusEl.textContent = data.error || 'Server error';
+                button.disabled = false;
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let evt;
+                    try { evt = JSON.parse(line); } catch (e) { continue; }
+                    if (evt.type === 'status') {
+                        statusEl.textContent = evt.message;
+                    } else if (evt.type === 'finding') {
+                        addFinding(evt);
+                    } else if (evt.type === 'end') {
+                        button.disabled = false;
+                    }
+                }
+            }
+            button.disabled = false;
+        } catch (e) {
+            statusEl.textContent = 'Failed to connect';
+            button.disabled = false;
+        }
+    });
+    </script>
+</body>
+</html>
