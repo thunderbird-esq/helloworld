@@ -8,11 +8,13 @@ This document outlines the future development plans for the HelloBird applicatio
 - [x] Real-time scanning output
 - [x] Stream viewing with FFmpeg and HLS.js
 - [x] CIDR network range scanning
-- [x] AI-powered contextual analysis of video streams
+- [x] Device Information
+- [x] Vulnerability Scanning
+- [x] Default Credential-Testing
+- [x] Manual Reconnaissance
+- [x] Automated Data Correlation & Reporting
 
 ## Phase 2: Enhanced Reporting and Usability
-
-- **Automated Data Correlation & Reporting:** Evolve the output from a simple text log to a structured report. This will involve parsing the `CamXploit.py` output and presenting it in a more organized and user-friendly format.
 - **Session Persistence & History:** Save scan results and allow users to view previous reports. This will likely involve adding a simple database to the application.
 - **Improved UI/UX:** Enhance the user interface to provide a more intuitive and polished experience. This could include features such as sorting and filtering of scan results, and a more advanced video player.
 

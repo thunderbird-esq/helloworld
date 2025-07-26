@@ -24,10 +24,25 @@ This section outlines the tests for the core functionality of the application.
 -   **Test Case 1.2.2:** View an invalid video stream.
     -   **Expected Result:** The application should display an error message and should not attempt to open the video stream.
 
-### 1.3. AI-Powered Contextual Analysis
+### 1.3. Device Information
 
 -   **Test Case 1.3.1:** Scan an IP address with a known open camera.
-    -   **Expected Result:** The application should display a contextual summary of the video stream, including the likely environment, key objects identified, and a one-sentence summary.
+    -   **Expected Result:** The application should display the device information, including the brand, model, and open ports.
+
+### 1.4. Vulnerability Scanning
+
+-   **Test Case 1.4.1:** Scan an IP address with a known vulnerable camera.
+    -   **Expected Result:** The application should display a list of known CVEs for the camera.
+
+### 1.5. Default Credential-Testing
+
+-   **Test Case 1.5.1:** Scan an IP address with a camera that has default credentials.
+    -   **Expected Result:** The application should display the default credentials.
+
+### 1.6. Manual Reconnaissance
+
+-   **Test Case 1.6.1:** Scan an IP address.
+    -   **Expected Result:** The application should display links for manual investigation on Shodan, Censys, and Zoomeye.
 
 ## 2. Security Testing
 

@@ -8,7 +8,10 @@ HelloBird is a web-based wrapper for the CamXploit CCTV reconnaissance tool. It 
 -   **Real-time Scanning:** Real-time output of the scanning process, so you can see the results as they come in.
 -   **Stream Viewing:** View the streams of discovered cameras directly in your browser.
 -   **CIDR Network Range Scanning:** Scan a range of IP addresses using CIDR notation.
--   **AI-Powered Contextual Analysis:** Get an AI-powered contextual summary of what each camera is likely seeing.
+-   **Device Information:** Get detailed information about the camera, including the brand, model, and open ports.
+-   **Vulnerability Scanning:** Scan for known CVEs for the identified camera brand.
+-   **Default Credential-Testing:** Test for default credentials on the camera's login page.
+-   **Manual Reconnaissance:** Get links for manual investigation on Shodan, Censys, and Zoomeye.
 
 ## 🚀 **Deployment**
 
