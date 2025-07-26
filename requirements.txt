@@ -1,2 +1,5 @@
 requests
 ipaddress
+shodan
+python-dotenv
+transformers

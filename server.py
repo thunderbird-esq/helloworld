@@ -86,6 +86,9 @@ def scan():
                 elif "Stream Found:" in line or "Video File:" in line or "Streaming URL:" in line:
                     url = line.split(" ")[-1]
                     data_to_send = {"type": "streams", "message": [url]}
+                elif "📝 Summary:" in line:
+                    summary = line.split("📝 Summary: ")[1]
+                    data_to_send = {"type": "ai_summary", "message": summary}
 
                 yield f"data: {json.dumps(data_to_send)}\\n\\n"
 

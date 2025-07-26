@@ -41,6 +41,7 @@
                         <div id="vulnerabilities"></div>
                         <div id="streams"></div>
                         <div id="manual-recon"></div>
+                        <div id="ai-summary"></div>
                     </div>
                 </div>
             </div>
@@ -131,6 +132,10 @@
                                 html += `<p><a href="${data.message[key]}" target="_blank">${key}</a></p>`;
                             }
                             manualRecon.innerHTML = html;
+                        } else if (data.type === 'ai_summary') {
+                            let html = '<h3>AI Summary</h3>';
+                            html += `<p>${data.message}</p>`;
+                            document.getElementById('ai-summary').innerHTML = html;
                         }
                     } catch (e) {
                         const line = document.createElement('div');

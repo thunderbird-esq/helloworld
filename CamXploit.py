@@ -10,6 +10,15 @@ from urllib.parse import urlparse
 import base64
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import time
+import shodan
+from dotenv import load_dotenv
+import os
+from transformers import pipeline
+
+# Load environment variables
+load_dotenv()
+SHODAN_API_KEY = os.getenv("SHODAN_API_KEY")
+HF_API_KEY = os.getenv("HF_API_KEY")
 
 # Suppress SSL warnings
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
@@ -191,6 +200,78 @@ CVE_DATABASE = {
 
 # Thread control
 threads_running = True
+
+def get_ai_context(image_path, ip_info):
+    """Get AI-powered contextual analysis of an image"""
+    print(f"\n{C}[🤖] AI-Powered Contextual Analysis:{W}")
+    if not HF_API_KEY or HF_API_KEY == "YOUR_HUGGINGFACE_API_KEY":
+        print(f"{R}[!] Hugging Face API key not found. Skipping AI analysis.{W}")
+        return
+
+    try:
+        # Initialize the image-to-text pipeline
+        image_to_text = pipeline("image-to-text", model="Salesforce/blip-image-captioning-large", use_auth_token=HF_API_KEY)
+
+        # Analyze the image
+        analysis = image_to_text(image_path)
+
+        # Combine the analysis with the IP information
+        context = {
+            "image_analysis": analysis[0]['generated_text'],
+            "ip_information": ip_info
+        }
+
+        print(f"  📝 Summary: {context['image_analysis']}")
+
+    except Exception as e:
+        print(f"{R}[!] Error during AI analysis: {str(e)}{W}")
+
+def capture_snapshot(stream_url, ip):
+    """Capture a snapshot from a video stream"""
+    print(f"\n{C}[📸] Capturing Snapshot from Stream:{W}")
+    try:
+        # Create a directory to store snapshots if it doesn't exist
+        if not os.path.exists("snapshots"):
+            os.makedirs("snapshots")
+
+        # Generate a unique filename for the snapshot
+        snapshot_path = os.path.join("snapshots", f"{ip.replace('.', '_')}_{int(time.time())}.jpg")
+
+        # Use ffmpeg to capture a single frame from the video stream
+        command = [
+            "ffmpeg",
+            "-i", stream_url,
+            "-vframes", "1",
+            snapshot_path
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        if os.path.exists(snapshot_path):
+            print(f"  ✅ Snapshot saved to: {snapshot_path}")
+            return snapshot_path
+        else:
+            print(f"{R}[!] Failed to capture snapshot.{W}")
+            return None
+
+    except Exception as e:
+        print(f"{R}[!] Error capturing snapshot: {str(e)}{W}")
+        return None
+
+def get_shodan_info(ip):
+    """Get information from Shodan about the IP address"""
+    print(f"\n{C}[🔍] Shodan Information:{W}")
+    if not SHODAN_API_KEY or SHODAN_API_KEY == "YOUR_SHODAN_API_KEY":
+        print(f"{R}[!] Shodan API key not found. Skipping Shodan search.{W}")
+        return
+    try:
+        api = shodan.Shodan(SHODAN_API_KEY)
+        host = api.host(ip)
+        print(f"  🏢 ISP: {host.get('org', 'N/A')}")
+        print(f"  🌍 Location: {host.get('city', 'N/A')}, {host.get('country_name', 'N/A')}")
+        print(f"  🏷️ Hostnames: {', '.join(host.get('hostnames', []))}")
+        print(f"  📦 Open Ports: {', '.join(map(str, host.get('ports', [])))}")
+    except shodan.APIError as e:
+        print(f"{R}[!] Shodan API error: {e}{W}")
 
 def print_search_urls(ip):
     print(f"\n[🌍] {C}Use these URLs to check the camera exposure manually:{W}")
@@ -818,7 +899,7 @@ def check_stream(url):
 def detect_live_streams(ip, open_ports):
     """Enhanced live stream detection with better methods"""
     print(f"\n{C}[🎥] Checking for Live Streams:{W}")
-    found_streams = False
+    found_streams = []
     
     # Common streaming protocols and their default ports
     streaming_ports = {
@@ -951,17 +1032,21 @@ def detect_live_streams(ip, open_ports):
                     print(f"  ✅ Stream Found: {url}")
                     print(f"     📺 Content-Type: {content_type}")
                     print(f"     📏 Content-Length: {content_length}")
+                    found_streams.append(url)
                     return True
                 elif any(x in url.lower() for x in ['.mp4', '.m3u8', '.ts', '.flv', '.webm', '.avi', '.mov']):
                     print(f"  ✅ Video File: {url}")
                     print(f"     📺 Content-Type: {content_type}")
+                    found_streams.append(url)
                     return True
                 elif any(x in url.lower() for x in ['rtsp://', 'rtmp://', 'mms://', 'rtp://']):
                     print(f"  ✅ Streaming URL: {url}")
+                    found_streams.append(url)
                     return True
                 elif any(x in url.lower() for x in ['/video', '/stream', '/live', '/mjpg', '/snapshot']):
                     print(f"  ✅ Potential Stream: {url}")
                     print(f"     📺 Content-Type: {content_type}")
+                    found_streams.append(url)
                     return True
         except Exception as e:
             pass
@@ -1055,6 +1140,8 @@ def detect_live_streams(ip, open_ports):
     else:
         print(f"  📊 Stream detection completed")
 
+    return found_streams
+
 def main():
     global threads_running
     try:
@@ -1080,7 +1167,13 @@ def main():
             check_login_pages(target_ip, open_ports)
             fingerprint_camera(target_ip, open_ports)
             test_default_passwords(target_ip, open_ports)
-            detect_live_streams(target_ip, open_ports)
+            live_streams = detect_live_streams(target_ip, open_ports)
+            if live_streams:
+                for stream_url in live_streams:
+                    snapshot_path = capture_snapshot(stream_url, target_ip)
+                    if snapshot_path:
+                        ip_info = f"IP: {target_ip}, Stream: {stream_url}"
+                        get_ai_context(snapshot_path, ip_info)
         else:
             print("\n[❌] No open ports found. Likely no camera here.")
         print("\n[✅] Scan Completed!")
