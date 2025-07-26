@@ -50,30 +50,47 @@ def scan():
             process.stdin.write(safe_ip + '\n')
             process.stdin.flush()
 
-            streams = []
             for line in iter(process.stdout.readline, ''):
-                yield f"data: [{safe_ip}] {line}\\n\\n"
-                # Simple regex to find stream URLs
-                url_regex = r"(rtsp|rtmp|http|https)?://[^\s\"']+"
-                match = re.search(url_regex, line)
-                if match:
-                    streams.append(match.group(0))
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Default to sending as a raw log message
+                data_to_send = {"type": "scan_log", "message": line}
+
+                # Attempt to parse specific information
+                if "Shodan:" in line:
+                    url = line.split(" ")[-1]
+                    data_to_send = {"type": "manual_recon", "message": {"Shodan": url}}
+                elif "Censys:" in line:
+                    url = line.split(" ")[-1]
+                    data_to_send = {"type": "manual_recon", "message": {"Censys": url}}
+                elif "Zoomeye:" in line:
+                    url = line.split(" ")[-1]
+                    data_to_send = {"type": "manual_recon", "message": {"Zoomeye": url}}
+                elif "Google Dork:" in line:
+                    url = line.split(" ")[-1]
+                    data_to_send = {"type": "manual_recon", "message": {"Google Dork": url}}
+                elif "OPEN!" in line:
+                    port = int(line.split(" ")[2])
+                    data_to_send = {"type": "device_info", "message": {"open_port": port}}
+                elif "Camera Server Detected" in line:
+                    brand = line.split(" ")[3]
+                    data_to_send = {"type": "device_info", "message": {"brand": brand}}
+                elif "Success!" in line:
+                    creds = line.split(" ")[2]
+                    data_to_send = {"type": "device_info", "message": {"credentials": creds}}
+                elif "https://nvd.nist.gov/vuln/detail/" in line:
+                    cve = line.split("/")[-1]
+                    data_to_send = {"type": "vulnerabilities", "message": [cve]}
+                elif "Stream Found:" in line or "Video File:" in line or "Streaming URL:" in line:
+                    url = line.split(" ")[-1]
+                    data_to_send = {"type": "streams", "message": [url]}
+
+                yield f"data: {json.dumps(data_to_send)}\\n\\n"
 
             process.stdout.close()
             process.wait()
-
-            if streams:
-                yield f"data: --- Found {len(streams)} streams, generating context... ---\\n\\n"
-                for stream_url in streams:
-                    image_path = f"/tmp/{safe_ip}_frame.jpg"
-                    if capture_frame(stream_url, image_path):
-                        technical_data = {"ip_address": safe_ip}
-                        geolocation_data = {} # In a real app, you'd get this from ipinfo.io
-                        context = get_contextual_summary(image_path, technical_data, geolocation_data)
-                        yield f"data: {json.dumps(context)}\\n\\n"
-                        os.remove(image_path)
-                    else:
-                        yield f"data: --- Could not capture frame for {stream_url} ---\\n\\n"
 
 
     return Response(generate_output(), mimetype='text/event-stream')
@@ -114,37 +131,6 @@ def stream(stream_url_b64):
 
     return Response(generate_ffmpeg_stream(), mimetype='application/vnd.apple.mpegurl')
 
-
-import requests
-
-def get_contextual_summary(image_path, technical_data, geolocation_data):
-    """
-    Gets a contextual summary for a video stream using a multi-modal LLM.
-    """
-    # Mock response for testing purposes
-    return {
-        "likely_environment": "outdoor street",
-        "key_objects_identified": ["car", "pedestrian"],
-        "contextual_summary": "This is likely a public traffic camera in a busy city."
-    }
-
-def capture_frame(stream_url, filename):
-    """
-    Captures a single frame from a video stream and saves it to a file.
-    """
-    command = [
-        'ffmpeg',
-        '-i', stream_url,
-        '-vframes', '1',
-        '-f', 'image2',
-        filename
-    ]
-    try:
-        subprocess.run(command, check=True, capture_output=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error capturing frame: {e.stderr.decode()}")
-        return False
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

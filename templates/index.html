@@ -31,9 +31,18 @@
                 <p>Awaiting command...</p>
             </div>
 
-            <div id="context-container" style="margin-top: 10px; display: none;">
-                <h3>Contextual Information</h3>
-                <div id="context-content"></div>
+            <div id="results-container" style="margin-top: 20px;">
+                <div class="window" style="width: 100%;">
+                    <div class="title-bar">
+                        <div class="title-bar-text">Scan Results</div>
+                    </div>
+                    <div class="window-body">
+                        <div id="device-info"></div>
+                        <div id="vulnerabilities"></div>
+                        <div id="streams"></div>
+                        <div id="manual-recon"></div>
+                    </div>
+                </div>
             </div>
 
             <div id="video-container" style="margin-top: 10px; background-color: black; display: none;">
@@ -54,28 +63,32 @@
             const statusBar = document.getElementById('statusBar');
             const videoContainer = document.getElementById('video-container');
             const videoPlayer = document.getElementById('video-player');
+            const deviceInfo = document.getElementById('device-info');
+            const vulnerabilities = document.getElementById('vulnerabilities');
+            const streams = document.getElementById('streams');
+            const manualRecon = document.getElementById('manual-recon');
             let eventSource;
             let hls;
 
             scanButton.addEventListener('click', () => {
                 const ip = ipAddressInput.value.trim();
-                // Simple client-side validation
                 if (!ip) {
                     outputContainer.innerHTML = '<p style="color: red;">Error: IP address cannot be empty.</p>';
                     return;
                 }
 
-                // Clean up any previous connection
                 if (eventSource) {
                     eventSource.close();
                 }
 
-                // Clear previous output and update status
                 outputContainer.innerHTML = '';
+                deviceInfo.innerHTML = '';
+                vulnerabilities.innerHTML = '';
+                streams.innerHTML = '';
+                manualRecon.innerHTML = '';
                 statusBar.textContent = `Scanning ${ip}...`;
                 scanButton.disabled = true;
 
-                // Establish the EventSource connection to our backend
                 eventSource = new EventSource('/scan', {
                     method: 'POST',
                     headers: {
@@ -84,38 +97,50 @@
                     body: JSON.stringify({ ip: ip }),
                 });
 
-                // This is the core listener for incoming data from the server.
                 eventSource.onmessage = function(event) {
-                    const line = document.createElement('div');
                     const content = event.data;
 
                     try {
                         const data = JSON.parse(content);
-                        const contextContainer = document.getElementById('context-container');
-                        const contextContent = document.getElementById('context-content');
-                        contextContent.innerHTML = `
-                            <p><strong>Likely Environment:</strong> ${data.likely_environment}</p>
-                            <p><strong>Key Objects Identified:</strong> ${data.key_objects_identified.join(', ')}</p>
-                            <p><strong>Contextual Summary:</strong> ${data.contextual_summary}</p>
-                        `;
-                        contextContainer.style.display = 'block';
+
+                        if (data.type === 'scan_log') {
+                            const line = document.createElement('div');
+                            line.textContent = data.message;
+                            outputContainer.appendChild(line);
+                        } else if (data.type === 'device_info') {
+                            let html = '<h3>Device Information</h3>';
+                            for (const key in data.message) {
+                                html += `<p><strong>${key}:</strong> ${data.message[key]}</p>`;
+                            }
+                            deviceInfo.innerHTML = html;
+                        } else if (data.type === 'vulnerabilities') {
+                            let html = '<h3>Vulnerabilities</h3>';
+                            data.message.forEach(cve => {
+                                html += `<p><a href="https://nvd.nist.gov/vuln/detail/${cve}" target="_blank">${cve}</a></p>`;
+                            });
+                            vulnerabilities.innerHTML = html;
+                        } else if (data.type === 'streams') {
+                            let html = '<h3>Streams</h3>';
+                            data.message.forEach(url => {
+                                html += `<p><a href="#" class="stream-link" data-url="${url}">${url}</a></p>`;
+                            });
+                            streams.innerHTML = html;
+                        } else if (data.type === 'manual_recon') {
+                            let html = '<h3>Manual Recon</h3>';
+                            for (const key in data.message) {
+                                html += `<p><a href="${data.message[key]}" target="_blank">${key}</a></p>`;
+                            }
+                            manualRecon.innerHTML = html;
+                        }
                     } catch (e) {
-                        // Regex to find potential stream URLs
-                        const urlRegex = /(rtsp|rtmp|http|https)?:\\/\\/[^\\s\"']+/gi;
-                        // Security: Use textContent for non-URL parts and create links safely.
-                        line.innerHTML = content.replace(urlRegex, (url) => {
-                            // Make URLs clickable for Task 4
-                            return `<a href="#" class="stream-link" data-url="${url}">${url}</a>`;
-                        });
+                        const line = document.createElement('div');
+                        line.textContent = content;
                         outputContainer.appendChild(line);
                     }
 
-
-                    // Auto-scroll to the bottom
                     outputContainer.scrollTop = outputContainer.scrollHeight;
                 };
 
-                // Handle errors with the connection
                 eventSource.onerror = function() {
                     statusBar.textContent = 'Error: Connection to server lost or scan complete.';
                     scanButton.disabled = false;
@@ -123,7 +148,7 @@
                 };
             });
 
-            outputContainer.addEventListener('click', (e) => {
+            document.body.addEventListener('click', (e) => {
                 if (e.target.classList.contains('stream-link')) {
                     e.preventDefault();
                     const streamUrl = e.target.getAttribute('data-url');
@@ -134,8 +159,7 @@
                         hls.destroy();
                     }
                     hls = new Hls();
-                    const encodedUrl = btoa(streamUrl); // Use url-safe base64 in production
-                    // The /stream/ endpoint would need to serve the HLS playlist
+                    const encodedUrl = btoa(streamUrl);
                     hls.loadSource(`/stream/${encodedUrl}`);
                     hls.attachMedia(videoPlayer);
                     hls.on(Hls.Events.MANIFEST_PARSED, function() {
@@ -145,7 +169,6 @@
                 }
             });
 
-            // Final memory leak prevention: ensure eventSource is closed if the user navigates away.
             window.addEventListener('beforeunload', () => {
                 if (eventSource) {
                     eventSource.close();
